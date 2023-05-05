@@ -1,0 +1,241 @@
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:include="layout :: head(title=~{::title},links=~{})">
+<title>View Bills</title>
+</head>
+<body th:include="layout :: body" th:with="content=~{::content}">
+	<div th:fragment="content">
+		<script th::inline="javascript">
+		/* Otherwise Thymeleaf tries to parse Javascript as XML and breaks itself sometimes.  Sigh */
+		/*<![CDATA[*/
+ 			var app = angular.module("viewBillsApp", []);
+			app.controller("viewBillsCtrl", function($scope, $http) {
+
+			$scope.showPdf = false;
+			$scope.errorAdding = "";
+		    $scope.successMessage = "";
+			$scope.bills = [];
+			$scope.loadTable = function () {
+				$http.get("/iTrust2/api/v1/bills/mybills").then(
+					function (response) {
+						$scope.bills = response.data;
+						$scope.errorMsg = "";
+					}, function (rejection) {
+						$scope.bills = [];
+						$scope.errorMsg = "Could not display bills.";
+					});
+				}
+			$scope.loadTable();
+
+			$scope.bill = null;
+            $scope.selectBill = function (bill) {
+				$scope.display = false;
+                $scope.bill = bill;
+            }
+
+			$scope.viewSelectedBill = function() {
+			  $scope.display = true;
+		  	}
+			
+			$scope.click = function () {
+				$scope.showPdf = true;
+				html2canvas(document.getElementById('pdf-content'), {
+					onrendered: function (canvas) {
+						var data = canvas.toDataURL();
+						var docDefinition = {
+							content: [{
+								image: data,
+								width: 500
+							}]
+						};
+						pdfMake.createPdf(docDefinition).download("Patient_Billing.pdf");
+					}
+				});
+				setTimeout(() => {
+					$scope.showPdf = false;
+					location.reload();
+				}, 2000);
+			}
+			
+			$http.get('/iTrust2/api/v1/billcertificate').then(function(response) {
+					console.log(response.data);
+				    $scope.certificateList= response.data.celist;
+				    $scope.patient = response.data.patient;
+				    console.log($scope.patient);
+					$scope.getBills();
+				}, function(rejection) {
+				    console.err("Could not retrieve expected certificate record");
+				});
+
+			function setShowPDF() {
+				$scope.showPdf = true;
+			}
+
+			$scope.getBills = () => {
+				if ($scope.certificateList.length < 1) {
+					$scope.noBills = true;
+				}  else {
+					$scope.noBills = false;
+				}
+				$scope.billList = $scope.certificateList.map((bill) => {
+					var billObj = {
+						status: bill.status,
+						date: bill.dateTime,
+						cost: bill.totalCost,
+					}
+					return billObj;
+				});
+			}
+
+			$scope.getDate = (date) => {
+            	var apptDate = new Date(date);
+            	return apptDate.toDateString();
+            }
+
+			$scope.handleDownload = () => {
+				$scope.generatePDF();
+			}
+			
+			$scope.getCertHTML = () => {
+				
+			}
+			
+			$scope.getPDFName = () => {
+				return "" + $scope.patient.firstName + "_" + $scope.patient.lastName + "_PatientBilling.pdf";
+			}
+		});
+
+</script>
+		<div ng-app="viewBillsApp" ng-controller="viewBillsCtrl">
+			<div class="container">
+				<div class="row" style="padding-top: 15px">
+					<div class="col-md-12">
+						<div class="panel panel-primary">
+							<div class="panel-heading">
+								<h3>Patient - View Bills</h3>
+							</div>
+							<div class="panel-body">
+								<table class="table table-bordered">
+									<caption>Existing Bills:</caption>
+									<thead>
+										<tr>
+											<th>Select Bill</th>
+											<th>Status</th>
+											<th>Date Issued</th>
+											<th>Total Cost</th>
+										</tr>
+									</thead>
+									<tbody>
+										<tr name="billTableRow"
+											ng-repeat="b in bills | orderBy: 'date'" billId={{b.id}}>
+												<td name="selectCell"><input type="radio" name="selectRow" ng-model="$parent.selectedBill" ng-value="b.id" ng-click="selectBill(b)"></td>
+												<td name="statusCell">{{b.status}}</td>
+												<td name="dateCell">{{b.date | date :
+													'MM/dd/yyyy'}}</td>
+												<td name="costCell">${{b.amountOwed}}</td>
+										</tr>
+									</tbody>
+								</table>
+
+							</div>
+
+							<div class="panel-footer text-right">
+								<button class="btn btn-primary btn-lg" ng-click="viewSelectedBill()"
+									name="viewBill" ng-disabled="!bill">View Bill</button>
+							</div>
+							
+							<br>
+
+								<div class="row">
+									<div class="col-md-12">
+										<div class="panel panel-default" ng-if="bill && display">
+											<div class="panel-heading ">Bill Information</div>
+												<div class="panel-body">
+													<form name="viewBillForm"
+														ng-submit="payBill(viewBillForm.$valid)">
+														<b><label>Patient:</label> <input type="text"
+															name="patient" class="form-control" value="{{bill.patient.username}}" disabled/>
+														<br> <b><label for="date">Date:</label> <input id="date" type="text"
+															class="form-control" value="{{bill.date  | date :
+																	'MM/dd/yyyy'}}" name="date" disabled />
+														<br> <b><label>Attending HCP:</label> <input type="text"
+															name="hcp" class="form-control" value="{{bill.attendingHCP.username}}" disabled/>
+														<br> <b><label>Bill Status:</label> <input type="text"
+															name="status" class="form-control" value="{{bill.status}}" disabled/> <br> <br>
+														<div class="panel-default">
+															<table class="table table-bordered">
+																<caption>CPT Codes for this bill:</caption>
+															<thead>
+															<tr>
+																<th>CPT Code</th>
+																<th>Description</th>
+																<th>Cost</th>
+															</tr>
+															<tbody>
+																<tr name="cptTableRow"
+																	ng-repeat="c in bill.cptCodes | orderBy: 'code'" userId={{c.code}}>
+																	<td name="codeCell">{{c.code}}</td>
+																	<td name="descriptionCell">{{c.description}}</td>
+																	<td name="costCell">${{c.cost}}</td>
+																</tr>
+															</tbody>
+															</table>
+														</div>
+													</form>
+												</div>
+											</div>
+										</div>
+										<br />
+									</div>
+									<div class="row">
+										<button class="btn btn-lg" style="margin-left: 15px; font-size: 15px; background-color: #363636; color: white; font-weight: 300;" ng-click="click()">
+											Download Billing
+										</button>
+									</div>
+								</div>
+							</div>
+						</div>
+					</div>
+					<br />
+					<div id="pdf-content" ng-show="showPdf">
+						<div class="panel panel-default">
+							<div class="panel-heading">
+								<h3>iTrust2 Patient Billing Certificate</h3>
+							</div>
+							<div class="panel-body">
+								<p>This document contains sensitive information that is intended only for the named individual. Unauthorized copying, disclosure, or distribution of the contents is strictly prohibited.</p>
+							</div>
+						</div>
+						<div class="panel panel-default">
+							<div class="panel-body">
+								<h5>Name: {{patient.firstName}} {{patient.lastName}}</h5>
+								<h5>Date of Birth: {{patient.dateOfBirth}}</h5>
+								<h5>ID: {{patient.id}}</h5>
+							</div>
+						</div>
+						<br />
+						<div class="panel panel-default" id="export">
+							<div class="panel-heading ">
+								Bills
+							</div>
+							<div class="panel-body">
+								<p ng-show="noBills">No Bills Found in the System.</p>
+									<table class="table table-bordered" ng-show="!noBills">
+										<tr style="background-color: #363636; color: white; font-weight: 300;">
+											<td>Status</td>
+											<td>Date</td>
+											<td>Total Cost</td>
+										</tr>
+										<tr ng-repeat="n in billList | orderBy: 'date'">
+											<td name="statusCell">{{n.status}}</td>
+											<td name="dateCell">{{n.date}}</td>
+											<td name="costCell">${{n.cost}}</td>
+										</tr>
+									</table>
+								</div>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+</body>
+</html>

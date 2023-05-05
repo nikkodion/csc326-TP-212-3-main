@@ -1,0 +1,227 @@
+<html xmlns:th="http://www.thymeleaf.org">
+
+<head th:include="layout :: head(title=~{::title},links=~{})">
+<title>Billing Specialist CPT Codes</title>
+<link rel="stylesheet"
+	href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
+<script
+	src="https://ajax.googleapis.com/ajax/libs/angularjs/1.6.4/angular.min.js"></script>
+</head>
+
+<body th:include="layout :: body" th:with="content=~{::content}">
+	<div th:fragment="content">
+
+
+		<script th:inline="javascript">
+      /* Otherwise Thymeleaf tries to parse Javascript as XML and breaks itself sometimes.  Sigh */
+      /*<![CDATA[*/
+      var app = angular.module("cptCodesApp", []);
+      app.controller('cptCodeCtrl', function ($scope, $http) {
+    	  
+    	var checkValidCPTCode = function(cptCode) {
+    		var err = [];
+    		if (cptCode.code.length != 5) {
+    			err.push("The code must be 5 characters long");
+    		}
+    		if (cptCode.cost < 0) {
+    			err.push("The cost must be a positive integer");
+    		}
+    		return err.join(". ");
+    	}
+
+        $scope.cptCodes = [];
+        $scope.loadTable = function () {
+          $http.get("/iTrust2/api/v1/cpt_codes").then(
+            function (response) {
+              $scope.cptCodes = response.data;
+              $scope.message = "";
+            }, function (rejection) {
+              $scope.cptCodes = [];
+              $scope.message = "Could not display CPT Codes";
+            });
+        }
+
+        $scope.addCPTCode = function () {
+          var err = checkValidCPTCode($scope.cptCode);
+          if (err) {
+            $scope.errorAdding = err;
+          } else {
+        	  $scope.cptCode.id = $scope.cptCode.code;
+        	  console.log($scope.cptCode);
+            $http.post("/iTrust2/api/v1/cpt_codes", $scope.cptCode).then(
+              function (response) {
+                $scope.loadTable();
+                $scope.cptCode.code = "";
+                $scope.cptCode.description = "";
+                $scope.cptCode.cost = "";
+                $scope.errorAdding = "";
+              }, function (rejection) {
+                $scope.errorAdding = "Could not add CPT Code";
+              });
+          }
+
+        }
+
+        $scope.deleteCPTCode = function (cptCode) {
+          $http.delete('/iTrust2/api/v1/cpt_codes/' + cptCode.id).then(
+            function (response) {
+              $scope.loadTable();
+              $scope.message = "";
+            }, function (rejection) {
+              $scope.message = "Could not remove CPT Code";
+            })
+        }
+
+        // gets the template to ng-include for a table row / item
+        $scope.selectedCPTCode = {};
+
+        $scope.getTemplate = function (cptCode) {
+          if (cptCode.id === $scope.selectedCPTCode.id) return 'edit';
+          else return 'view';
+        };
+
+        $scope.editCPTCode = function (cptCode) {
+          $scope.selectedCPTCode = angular.copy(cptCode);
+        };
+        $scope.saveCPTCode = function () {
+       	  var err = checkValidCPTCode($scope.selectedCPTCode);
+          if (err) {
+            $scope.errorAdding = err;
+          } else {
+            $http.put("/iTrust2/api/v1/cpt_codes", $scope.selectedCPTCode).then(
+              function (response) {
+                $scope.loadTable();
+                $scope.resetSelected();         
+              }, function (rejection) {
+                $scope.errorAdding = "Failed to edit CPT Code";
+              });
+          }
+        };
+
+        $scope.resetSelected = function () {
+          $scope.selectedCPTCode = {};
+        };
+
+        // load table initially
+        $scope.loadTable();
+      });
+			/*]]>*/
+    </script>
+
+
+
+		<div ng-app="cptCodesApp" ng-controller="cptCodeCtrl">
+			<div class="container">
+				<div class="row">
+					<div class="col-md-12">
+						<div class="panel panel-primary">
+							<div class="panel-heading">
+								<h3>Billing Specialist Manage CPT Codes</h3>
+							</div>
+							<div class="panel-body">
+								<table class="table table-bordered">
+									<caption>Existing CPT Codes:</caption>
+									<thead>
+										<tr>
+											<th>CPT Code</th>
+											<th>Description</th>
+											<th>Cost</th>
+											<th>Action</th>
+										</tr>
+									</thead>
+									<tbody>
+										<tr name="cptCodeTableRow"
+											ng-repeat="c in cptCodes"
+											ng-include="getTemplate(c)" cptCode={{c.code}}>
+										</tr>
+									</tbody>
+								</table>
+								<!-- table in view mode -->
+								<script type="text/ng-template" id="view">
+                  <td name="codeCell">{{c.code}}</td>
+                  <td name="descriptionCell">{{c.description}}</td>
+                  <td name="costCell">{{c.cost}}</td>
+                  <td>
+                    <div class="row text-center">
+                      <div class="col-md-6">
+                        <input type="button" value="Edit" class="btn btn-primary" name="editCPTCode" ng-click="editCPTCode(c)" />                         
+                      </div>
+                      <div class="col-md-6">
+                          <input type="button" value="Delete" class="btn btn-danger" name="deleteCPTCode" ng-click="deleteCPTCode(c)" />                          
+                      </div>
+                    </div>
+                  </td>
+                </script>
+
+								<!-- table in edit mode -->
+								<script type="text/ng-template" id="edit">
+                  <td name="editCodeCell">
+                    <input type="text" class="form-control" ng-model="selectedCPTCode.code" />
+                  </td>
+                  <td name="editDescriptionCell">
+                    <input type="text" class="form-control" ng-model="selectedCPTCode.description" />
+                  </td>
+                  <td name="editCostCell">
+                    <input type="text" class="form-control" ng-model="selectedCPTCode.cost" />
+                  </td>
+                  <td>
+                    <div class="row text-center">
+                      <div class="col-md-6">
+                          <input type="button" value="Save" class="btn btn-success" name="saveCPTCode" ng-click="saveCPTCode()" />                          
+                      </div>
+                      <div class="col-md-6">
+                          <input type="button" value="Cancel" class="btn btn-danger" name="cancelEdit" ng-click="resetSelected()" />                            
+                      </div>
+                    </div>
+                  </td>
+                </script>
+
+								<br>
+								<div class="row">
+									<div class="col-md-12">
+										<div class="panel panel-default">
+											<div class="panel-heading ">Add a CPT Code</div>
+											<div class="panel-body">
+												<form class="form-horizontal" role="form" name="addCPTCodeForm"
+													ng-submit="addCPTCode(addCPTCodeForm.$valid)">
+													<div class="row">
+														<div class="col-md-4">
+															<label>Code</label> <input type="text"
+																class="form-control" name="code" ng-model="cptCode.code"
+																required />
+														</div>
+														<div class="col-md-4">
+															<label>Description</label>
+															<textarea class="form-control" rows="5"
+																name="description" ng-model="cptCode.description" required
+																ng-minlength="1"></textarea>
+														</div>
+														<div class="col-md-4">
+															<label>Cost</label> <input type="text"
+																class="form-control"
+																name="cost" ng-model="cptCode.cost" required />
+														</div>
+													</div>
+													<div class="row">
+														<div class="col-md-12 text-right">
+															<button type="submit" class="btn btn-success"
+																name="submit">Submit</button>
+														</div>
+													</div>
+												</form>
+												<div>
+													<p style="color: red" ng-model="errorAdding" id="errP">{{errorAdding}}</p>
+												</div>
+											</div>
+										</div>
+									</div>
+								</div>
+							</div>
+						</div>
+					</div>
+				</div>
+</body>
+
+</html>
+
+<!-- still here? -->

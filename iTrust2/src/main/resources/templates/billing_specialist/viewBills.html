@@ -1,0 +1,227 @@
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:include="layout :: head(title=~{::title},links=~{})">
+<title>View Bills</title>
+</head>
+<body th:include="layout :: body" th:with="content=~{::content}">
+	<div th:fragment="content">
+		<script th::inline="javascript">
+		/* Otherwise Thymeleaf tries to parse Javascript as XML and breaks itself sometimes.  Sigh */
+		/*<![CDATA[*/
+ 			var app = angular.module("viewBillsApp", []);
+			app.controller("viewBillsCtrl", function($scope, $http) {
+
+			var checkValidPaymentForm = function(payment) {
+				var err = [];
+				if (payment.amount <= 0) {
+					err.push("Payment must be a positive integer.");
+				}
+				if (payment.amount > $scope.bill.amountOwed) {
+					err.push("Payment cannot be more than amount owed.");
+				}
+				if (payment.method == "") {
+					err.push("Must select payment method.");
+				}
+				return err.join(".  ");
+			}
+
+            $scope.errorAdding = "";
+		    $scope.successMessage = "";
+			$scope.bills = [];
+			$scope.loadTable = function () {
+				$http.get("/iTrust2/api/v1/bills").then(
+					function (response) {
+						$scope.bills = response.data;
+						$scope.errorMsg = "";
+					}, function (rejection) {
+						$scope.bills = [];
+						$scope.errorMsg = "Could not display bills.";
+					});
+				}
+			$scope.loadTable();
+
+			$scope.bill = null;
+            $scope.selectBill = function (bill) {
+                $scope.display = false;
+                $scope.bill = bill;
+                $scope.bill.attendingHCP = $scope.bill.attendingHCP.username;
+                $scope.bill.patient = $scope.bill.patient.username;
+            }
+
+			$scope.viewSelectedBill = function() {
+			  $scope.display = true;
+		  	}
+
+			$scope.payment = {
+				amount:0,
+				method:""
+			};
+
+			$scope.addPayment = function () {
+		        var err = checkValidPaymentForm($scope.payment);
+		        if (err) {
+		            $scope.errorAdding = err;
+		            $scope.successMessage = "";
+		        } else {
+					$scope.bill.amountOwed = $scope.bill.amountOwed - $scope.payment.amount;
+					$scope.bill.status = "PARTIALLY_PAID";
+					if ($scope.bill.amountOwed == 0) {
+						$scope.bill.status = "PAID";
+					}
+					$scope.bill.payments.push($scope.payment);
+		            // $http.put("/iTrust2/api/v1/bills/" + $scope.bill.id, $scope.bill).then(
+		            //   function (response) {
+		            // 	$scope.loadTable();
+		            //     $scope.payment.amount = 0;
+		            //     $scope.payment.method = "";
+		            //     $scope.errorAdding = "";
+		            //     $scope.successMessage = "Payment added successfully.";
+					// 	$scope.bill = null;
+		            // }, function (rejection) {
+		            //     $scope.errorAdding = "Could not make payment.";
+		            //     $scope.successMessage = "";
+		            // });
+					$http({
+						method : 'PUT',
+						url : '/iTrust2/api/v1/bills/' + $scope.bill.id,
+						data : $scope.bill
+					}).then(function(response) {
+		             	$scope.loadTable();
+		                $scope.errorAdding = "";
+		                $scope.successMessage = "Payment added successfully.";
+					}, function(rejection) {
+		                $scope.errorAdding = "Could not make payment.";
+		                $scope.successMessage = "";
+					})
+		          }
+
+		      }
+		});
+		</script>
+
+		<div ng-app="viewBillsApp" ng-controller="viewBillsCtrl">
+			<div class="container">
+				<div class="row">
+					<div class="col-md-12">
+						<div class="panel panel-primary">
+							<div class="panel-heading">
+								<h3>Billing Specialist - View Bills</h3>
+							</div>
+							<div class="panel-body">
+								<table class="table table-bordered">
+									<caption>Existing Bills:</caption>
+									<thead>
+										<tr>
+											<th>Select Bill</th>
+											<th>Status</th>
+											<th>Date Issued</th>
+											<th>Total Cost</th>
+										</tr>
+									</thead>
+									<tbody>
+										<tr name="billTableRow"
+											ng-repeat="b in bills | orderBy: 'date'" billId={{b.id}}>
+											<td name="selectCell"><input type="radio" name="selectRow" ng-model="$parent.selectedBill" ng-value="b.id" ng-click="selectBill(b)"></td>
+											<td name="statusCell">{{b.status}}</td>
+											<td name="dateCell">{{b.date | date :
+												'MM/dd/yyyy'}}</td>
+											<td name="costCell">${{b.amountOwed}}</td>
+										</tr>
+									</tbody>
+								</table>
+							
+							</div>
+
+							<div class="panel-footer text-right">
+								<button class="btn btn-primary btn-lg" ng-click="viewSelectedBill()"
+									name="viewBill" ng-disabled="!bill">View Bill</button>
+							</div>
+							<br>
+							<div class="row">
+								<div class="col-md-12">
+									<div class="panel panel-default" ng-if="bill && display">
+										<div class="panel-heading ">Bill Information</div>
+										<div class="panel-body">
+											<b><label>Patient:</label> <input type="text"
+												name="patient" class="form-control" value="{{bill.patient}}" disabled/>
+											<br> <b><label for="date">Date:</label> <input id="date" type="text"
+												class="form-control" value="{{bill.date  | date :
+														'MM/dd/yyyy'}}" name="date" disabled />
+											<br> <b><label>Attending HCP:</label> <input type="text"
+												name="hcp" class="form-control" value="{{bill.attendingHCP}}" disabled/>
+											<br> <b><label>Bill Status:</label> <input type="text"
+												name="status" class="form-control" value="{{bill.status}}" disabled/> <br> <br>
+											<div class="panel-default">
+												<table class="table table-bordered">
+													<caption>CPT Codes for this bill:</caption>
+												<thead>
+												<tr>
+													<th>CPT Code</th>
+													<th>Description</th>
+													<th>Cost</th>
+												</tr>
+												</thead>
+												<tbody>
+													<tr name="cptTableRow"
+														ng-repeat="c in bill.cptCodes | orderBy: 'code'" userId={{c.code}}>
+														<td name="codeCell">{{c.code}}</td>
+														<td name="descriptionCell">{{c.description}}</td>
+														<td name="costCell">${{c.cost}}</td>
+													</tr>
+												</tbody>
+												</table>
+											</div>
+											<div class="panel-default">
+												<table class="table table-bordered">
+													<caption>Payments:</caption>
+												<thead>
+												<tr>
+													<th>Amount Paid</th>
+													<th>Payment Method</th>
+												</tr>
+												</thead>
+												<tbody>
+													<tr name="paymentTableRow"
+														ng-repeat="p in bill.payments" userId={{p.code}}>
+														<td name="amountCell">${{p.amount}}</td>
+														<td name="methodCell">{{p.method}}</td>
+													</tr>
+												</tbody>
+												</table>
+											</div>
+											<br> 
+											<form name="payBillForm"
+												ng-submit="payBill(payBillForm.$valid)">
+												<div class="panel-default"></div>
+													<div class="form-group row">
+														<br> <b>Payment Amount: </b> <input type="text"
+															name="amount" id="amount" ng-model="payment.amount" /> <br>
+													</div>
+													<div class="form-group row">
+														<b>Payment Method: </b> <select name="method" ng-model="payment.method">
+															<option value="CASH">Cash</option>
+															<option value="CHECK">Check</option>
+															<option value="CREDIT_CARD">Credit Card</option>
+															<option value="INSURANCE">Insurance</option>
+														</select>
+													</div>
+													<br> <button class="btn btn-success" ng-click="addPayment()"
+														name="addPayment">Add Payment</button>
+											</form>
+											<div>
+												<p style="color: red" ng-model="errorAdding" id="errP">{{errorAdding}}</p>
+											</div>
+											<div>
+												<p style="color: green" ng-model="successMessage"
+													id="success">{{successMessage}}</p>
+											</div>
+										</div>
+									</div>
+								</div>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+</body>
+</html>
